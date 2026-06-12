@@ -1,0 +1,286 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  GYM_OWNER
+  TRAINER
+  MEMBER
+}
+
+enum GoalType {
+  WEIGHT_LOSS
+  WEIGHT_GAIN
+  MUSCLE_BUILDING
+  HEIGHT_GROWTH
+  FAT_REDUCTION
+  FITNESS_IMPROVEMENT
+  ENDURANCE_INCREASE
+  STRENGTH_DEVELOPMENT
+}
+
+enum MembershipPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  TELEGRAM
+}
+
+model User {
+  id             String          @id @default(cuid())
+  email          String          @unique
+  phone          String?
+  passwordHash   String
+  fullName       String
+  role           Role
+  locale         String          @default("uz")
+  clubId         String?
+  club           FitnessClub?    @relation(fields: [clubId], references: [id])
+  sessions       Session[]
+  trainerProfile TrainerProfile?
+  memberProfile  MemberProfile?
+  auditLogs      AuditLog[]
+  insideGym      Boolean         @default(false)
+  lastScanAt     DateTime?
+  qrToken        String          @unique @default(cuid())
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model FitnessClub {
+  id          String             @id @default(cuid())
+  name        String
+  description String?
+  address     String
+  latitude    Float?
+  longitude   Float?
+  phone       String?
+  rating      Float              @default(0)
+  ownerId     String?
+  members     User[]
+  packages    MembershipPlan[]
+  attendance  AttendanceRecord[]
+  payments    Payment[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+model TrainerProfile {
+  id          String          @id @default(cuid())
+  userId      String          @unique
+  user        User            @relation(fields: [userId], references: [id])
+  bio         String?
+  rating      Float           @default(0)
+  specialties String[]
+  members     MemberProfile[] @relation("TrainerMembers")
+  shifts      TrainerShift[]
+}
+
+model MemberProfile {
+  id              String              @id @default(cuid())
+  userId          String              @unique
+  user            User                @relation(fields: [userId], references: [id])
+  trainerId       String?
+  trainer         TrainerProfile?     @relation("TrainerMembers", fields: [trainerId], references: [id])
+  dateOfBirth     DateTime?
+  goals           Goal[]
+  measurements    BodyMeasurement[]
+  attendance      AttendanceRecord[]
+  nutritionLogs   NutritionLog[]
+  memberships     Membership[]
+  workoutPrograms WorkoutProgram[]
+  achievements    Achievement[]
+}
+
+model AttendanceRecord {
+  id              String        @id @default(cuid())
+  clubId          String
+  club            FitnessClub   @relation(fields: [clubId], references: [id])
+  memberId        String
+  member          MemberProfile @relation(fields: [memberId], references: [id])
+  entryAt         DateTime
+  exitAt          DateTime?
+  source          String        @default("QR")
+  durationSeconds Int?
+  status          String        @default("ACTIVE")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([clubId, entryAt])
+  @@index([memberId, entryAt])
+}
+
+model Goal {
+  id                  String        @id @default(cuid())
+  memberId            String
+  member              MemberProfile @relation(fields: [memberId], references: [id])
+  type                GoalType
+  currentValue        Float?
+  targetValue         Float?
+  progressPercentage  Float         @default(0)
+  estimatedCompletion DateTime?
+  status              String        @default("ACTIVE")
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+}
+
+model BodyMeasurement {
+  id          String        @id @default(cuid())
+  memberId    String
+  member      MemberProfile @relation(fields: [memberId], references: [id])
+  heightCm    Float?
+  weightKg    Float?
+  bmi         Float?
+  bodyFatPct  Float?
+  muscleMass  Float?
+  chestCm     Float?
+  waistCm     Float?
+  armsCm      Float?
+  legsCm      Float?
+  measuredAt  DateTime      @default(now())
+}
+
+model NutritionLog {
+  id          String        @id @default(cuid())
+  memberId    String
+  member      MemberProfile @relation(fields: [memberId], references: [id])
+  calories    Int
+  proteinG    Int
+  carbsG      Int
+  fatsG       Int
+  waterMl     Int
+  loggedAt    DateTime      @default(now())
+}
+
+model WorkoutProgram {
+  id          String        @id @default(cuid())
+  memberId    String
+  member      MemberProfile @relation(fields: [memberId], references: [id])
+  title       String
+  description String
+  difficulty  String
+  days        Json          @default("[]")
+  startsAt    DateTime
+  endsAt      DateTime?
+  createdAt   DateTime      @default(now())
+}
+
+model MembershipPlan {
+  id        String           @id @default(cuid())
+  clubId    String
+  club      FitnessClub      @relation(fields: [clubId], references: [id])
+  name      String
+  period    MembershipPeriod
+  price     Decimal
+  benefits  String[]
+  active    Boolean          @default(true)
+}
+
+model Membership {
+  id          String         @id @default(cuid())
+  memberId    String
+  member      MemberProfile  @relation(fields: [memberId], references: [id])
+  planName    String
+  period      MembershipPeriod
+  startsAt    DateTime
+  expiresAt   DateTime
+  remainingDays Int
+  payments    Payment[]
+
+  @@index([expiresAt])
+  @@index([memberId, expiresAt])
+}
+
+model Payment {
+  id            String       @id @default(cuid())
+  clubId        String
+  club          FitnessClub  @relation(fields: [clubId], references: [id])
+  membershipId  String?
+  membership    Membership?  @relation(fields: [membershipId], references: [id])
+  amount        Decimal
+  currency      String       @default("USD")
+  provider      String
+  status        String
+  paidAt        DateTime?
+  createdAt     DateTime     @default(now())
+
+  @@index([clubId, status])
+  @@index([paidAt])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String
+  channel   NotificationChannel
+  title     String
+  body      String
+  sentAt    DateTime?
+  readAt    DateTime?
+  status    String              @default("PENDING")
+  createdAt DateTime            @default(now())
+
+  @@index([userId, status])
+}
+
+model TrainerShift {
+  id        String         @id @default(cuid())
+  trainerId String
+  trainer   TrainerProfile @relation(fields: [trainerId], references: [id])
+  dayOfWeek Int
+  startTime String
+  endTime   String
+  note      String?
+  clubId    String?
+  createdAt DateTime       @default(now())
+
+  @@unique([trainerId, dayOfWeek])
+}
+
+model Achievement {
+  id        String        @id @default(cuid())
+  memberId  String
+  member    MemberProfile @relation(fields: [memberId], references: [id])
+  title     String
+  badge     String
+  awardedAt DateTime      @default(now())
+}
+
+model Session {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  refreshTokenHash String
+  ipAddress        String?
+  userAgent        String?
+  revokedAt        DateTime?
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  ipAddress String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([action, createdAt])
+}
